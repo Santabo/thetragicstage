@@ -442,7 +442,11 @@
         let strings = [];
         let backgroundEyes = [];
 
-        const keys = { ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false };
+        // Updated keys object to include WASD
+        const keys = { 
+            ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false,
+            KeyA: false, KeyD: false, KeyW: false, KeyS: false
+        };
 
         function resize() {
             width = window.innerWidth;
@@ -478,26 +482,29 @@
             update() {
                 if (this.dead) return;
                 
-                // Pulse Logic based on HP (Faster when low)
+                // Pulse Logic based on HP
                 const pulseSpeed = 0.05 + (1 - this.hp/this.maxHp) * 0.15;
                 this.pulseTimer += pulseSpeed;
 
+                // Handle freeze logic internally
                 if (this.freeze > 0) {
                     this.freeze--;
                     return; 
                 }
 
                 let dx = 0, dy = 0;
-                if (keys.ArrowLeft) dx = -1;
-                if (keys.ArrowRight) dx = 1;
-                if (keys.ArrowUp) dy = -1;
-                if (keys.ArrowDown) dy = 1;
+                // WASD + Arrow Keys
+                if (keys.ArrowLeft || keys.KeyA) dx = -1;
+                if (keys.ArrowRight || keys.KeyD) dx = 1;
+                if (keys.ArrowUp || keys.KeyW) dy = -1;
+                if (keys.ArrowDown || keys.KeyS) dy = 1;
+
                 if (dx !== 0 && dy !== 0) { dx *= 0.707; dy *= 0.707; }
 
                 this.x += dx * this.speed;
                 this.y += dy * this.speed;
                 
-                // Tilt logic for movement feel
+                // Tilt logic
                 this.tilt = dx * 0.2; 
 
                 // Wall collision with Box
@@ -797,7 +804,7 @@
             
             let moved = false;
             let checkMove = setInterval(() => {
-                if (keys.ArrowLeft || keys.ArrowRight || keys.ArrowUp || keys.ArrowDown) {
+                if (keys.ArrowLeft || keys.ArrowRight || keys.ArrowUp || keys.ArrowDown || keys.KeyA || keys.KeyD || keys.KeyW || keys.KeyS) {
                     moved = true;
                     clearInterval(checkMove);
                     showNarrative("GOOD.");
@@ -861,7 +868,6 @@
             
             bloodMoon: (diff) => {
                 const count = 3 + Math.floor(diff);
-                // Try to find spots far from each other? For now random is chaotic enough
                 for(let i=0; i<count; i++) {
                     setTimeout(() => {
                         const x = box.x + 25 + Math.random() * (box.w - 50);
@@ -878,9 +884,12 @@
                 setTimeout(() => {
                     bullets.push(new Bullet(box.x - 20, y, 6*diff, 0, 'needle'));
                     bullets.push(new Bullet(box.x + box.w + 20, y+20, -6*diff, 0, 'needle'));
-                    // Add a third offset one for Act 2+
+                    
+                    // Add a third offset one for Act 2+ but ensure gap is passable
                     if (currentAct > 1) {
-                         bullets.push(new Bullet(box.x - 20, y-30, 7*diff, 0, 'needle'));
+                         setTimeout(() => {
+                            bullets.push(new Bullet(box.x - 20, y-30, 7*diff, 0, 'needle'));
+                         }, 300);
                     }
                 }, 600);
             },
@@ -894,18 +903,21 @@
                 for(let i=0; i<cols; i++) {
                     if (i === safeCol) continue;
                     const x = box.x + (i * colW) + colW/2;
-                    // Create spike trap
-                    spotlights.push(new Spotlight(x, box.y + box.h/2, 60, 'spike'));
+                    // Warn slightly longer (70)
+                    spotlights.push(new Spotlight(x, box.y + box.h/2, 70, 'spike'));
                 }
             },
             
             phantomChoir: (diff) => {
-                // Walls of notes from sides
-                const gaps = [1, 0, 1, 0, 1]; // 1 = danger
-                const rowH = box.h / 5;
+                // Walls of notes from sides, GUARANTEE one safe row
+                const rows = 5;
+                const rowH = box.h / rows;
+                const safeRow = Math.floor(Math.random() * rows);
                 
-                for(let i=0; i<5; i++) {
-                    if (Math.random() > 0.4) {
+                for(let i=0; i<rows; i++) {
+                    if (i === safeRow) continue; // Safe spot
+                    
+                    if (Math.random() > 0.2) { // 80% chance to fill non-safe rows
                         const y = box.y + (i * rowH) + rowH/2;
                         const dir = i % 2 === 0 ? 1 : -1;
                         const startX = dir === 1 ? box.x - 20 : box.x + box.w + 20;
@@ -917,6 +929,11 @@
 
         function updateGame() {
             if (player.dead) return;
+
+            // FIX: Always update player first to handle freeze decrement
+            player.update();
+
+            // Then check freeze status. If frozen, skip the rest of the game world update.
             if (player.freeze > 0) return; 
 
             // Act Progression
@@ -939,7 +956,6 @@
             if (attackTimer <= 0) {
                 // Deck of patterns to ensure variety
                 const available = Object.keys(patterns).filter(p => p !== lastPattern);
-                // Weighting logic could go here, but random is okay for now
                 const choice = available[Math.floor(Math.random() * available.length)];
                 lastPattern = choice;
                 
@@ -947,11 +963,9 @@
                 
                 // Attack delay gets shorter in later acts
                 attackTimer = (120 / difficulty) - ((currentAct-1)*10);
-                if (attackTimer < 30) attackTimer = 30; // Min cap
+                if (attackTimer < 35) attackTimer = 35; // Min cap increased to prevent unfair overlap
             }
 
-            player.update();
-            
             strings.forEach(s => s.timer--); strings = strings.filter(s => s.timer > 0);
             
             warnings.forEach((w, i) => {
@@ -998,6 +1012,13 @@
             if (glitchIntensity > 0) glitchIntensity *= 0.9;
             
             if (decals.length > 50) decals.shift();
+            
+            // Background eyes follow player
+            backgroundEyes.forEach(e => {
+                const angle = Math.atan2(player.y - e.y, player.x - e.x);
+                e.pupilX = Math.cos(angle) * 3;
+                e.pupilY = Math.sin(angle) * 3;
+            });
         }
 
         function checkCollision(x, y, radius) {
@@ -1027,7 +1048,10 @@
                     ctx.fillStyle = `rgba(200, 0, 0, ${Math.random() * 0.5})`;
                     ctx.beginPath(); 
                     ctx.arc(e.x, e.y, e.size, 0, Math.PI*2); 
-                    ctx.arc(e.x+15, e.y+2, e.size, 0, Math.PI*2); 
+                    // Pupil
+                    const px = e.pupilX || 0;
+                    const py = e.pupilY || 0;
+                    ctx.arc(e.x+15+px, e.y+2+py, e.size, 0, Math.PI*2); 
                     ctx.fill();
                 }
             });
