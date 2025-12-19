@@ -35,7 +35,7 @@
             top: 0;
             left: 0;
             z-index: 5;
-            filter: contrast(1.2) brightness(0.9);
+            filter: contrast(1.3) brightness(0.85); /* Darker, higher contrast */
         }
 
         /* Curtains */
@@ -397,6 +397,36 @@
                 noise.start();
             }
             
+            static playLaugh() {
+                if (actx.state === 'suspended') actx.resume();
+                const t = actx.currentTime;
+                
+                // Demonic Laugh Generator
+                for(let i=0; i<6; i++) {
+                    const osc = actx.createOscillator();
+                    osc.type = i % 2 === 0 ? 'sawtooth' : 'square';
+                    // Pitch drops chaotically
+                    osc.frequency.setValueAtTime(300 - (i*40) + (Math.random()*50), t + i*0.12);
+                    osc.frequency.exponentialRampToValueAtTime(50, t + i*0.12 + 0.3);
+                    
+                    const gain = actx.createGain();
+                    gain.gain.setValueAtTime(0, t + i*0.12);
+                    gain.gain.linearRampToValueAtTime(0.4, t + i*0.12 + 0.05);
+                    gain.gain.exponentialRampToValueAtTime(0.01, t + i*0.12 + 0.35);
+                    
+                    // Add distortion to laugh
+                    const dist = actx.createWaveShaper();
+                    dist.curve = makeDistortionCurve(200);
+
+                    osc.connect(dist);
+                    dist.connect(gain);
+                    gain.connect(actx.destination);
+                    
+                    osc.start(t + i*0.12);
+                    osc.stop(t + i*0.12 + 0.4);
+                }
+            }
+            
             static enableDeathEffect() {
                 if (useSimpleAudio || !bassFilter) return;
                 const t = actx.currentTime;
@@ -430,6 +460,7 @@
         const box = { w: 300, h: 300, x: 0, y: 0 };
         let camera = { shake: 0, x: 0, y: 0 };
         let glitchIntensity = 0;
+        let showMonster = false; // Monster visibility flag
 
         let player;
         let bullets = [];
@@ -701,20 +732,34 @@
                     // Rectangular warning for spikes
                     if (!this.fired) {
                          const alpha = 0.1 + (1 - (this.timer / this.maxTimer)) * 0.5;
-                         ctx.fillStyle = `rgba(100, 100, 100, ${alpha})`;
+                         // Floor cracks visual
+                         ctx.fillStyle = `rgba(150, 50, 50, ${alpha})`;
                          ctx.fillRect(this.x - 25, box.y, 50, box.h);
+                         
+                         // Crack lines
+                         ctx.strokeStyle = `rgba(0,0,0, ${alpha})`;
+                         ctx.lineWidth = 2;
+                         ctx.beginPath();
+                         ctx.moveTo(this.x, box.y + 10);
+                         ctx.lineTo(this.x - 10, box.y + 50);
+                         ctx.lineTo(this.x + 10, box.y + 100);
+                         ctx.stroke();
+
                          // Timer line
                          ctx.fillStyle = '#fff';
                          ctx.fillRect(this.x - 25, box.y + box.h - 5, 50 * (this.timer/this.maxTimer), 5);
                     } else {
                          // SPIKE graphic
-                         ctx.fillStyle = '#888';
+                         ctx.fillStyle = '#444';
                          ctx.beginPath();
-                         ctx.moveTo(this.x - 20, box.y + box.h);
-                         ctx.lineTo(this.x, box.y + 20);
-                         ctx.lineTo(this.x + 20, box.y + box.h);
+                         ctx.moveTo(this.x - 25, box.y + box.h);
+                         ctx.lineTo(this.x, box.y + 20); // Sharp tip
+                         ctx.lineTo(this.x + 25, box.y + box.h);
                          ctx.fill();
-                         ctx.strokeStyle = '#fff'; ctx.stroke();
+                         ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+                         // Blood on tip
+                         ctx.fillStyle = '#f00';
+                         ctx.beginPath(); ctx.moveTo(this.x, box.y+20); ctx.lineTo(this.x-5, box.y+40); ctx.lineTo(this.x+5, box.y+40); ctx.fill();
                     }
                 } else {
                     // Standard Blood Moon
@@ -774,6 +819,10 @@
             }
 
             curtains.classList.add('curtain-open'); 
+            
+            // Reset state
+            showMonster = false;
+            actIndicator.style.opacity = 0;
 
             gameState = 'INTRO';
             for(let i=0; i<40; i++) backgroundEyes.push({
@@ -1029,6 +1078,59 @@
             }
         }
 
+        function drawMonster() {
+            ctx.save();
+            const shakeX = (Math.random() - 0.5) * 15;
+            const shakeY = (Math.random() - 0.5) * 15;
+            ctx.translate(width/2 + shakeX, height/2 + shakeY);
+            
+            // Scaling animation pulse
+            const scale = 1 + Math.sin(Date.now() * 0.02) * 0.05;
+            ctx.scale(scale, scale);
+            
+            // Head
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(0, 0, 180, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Glowing Eyes (Large, menacing)
+            ctx.shadowBlur = 40; ctx.shadowColor = '#f00';
+            ctx.fillStyle = '#fff';
+            
+            // Left Eye
+            ctx.beginPath();
+            ctx.ellipse(-70, -40, 25, 45, Math.PI/-8, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Right Eye
+            ctx.beginPath();
+            ctx.ellipse(70, -40, 25, 45, Math.PI/8, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Grin
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.moveTo(-120, 40);
+            ctx.quadraticCurveTo(0, 180, 120, 40);
+            ctx.quadraticCurveTo(0, 120, -120, 40);
+            ctx.fillStyle = '#eee';
+            ctx.fill();
+            
+            // Teeth
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 4;
+            ctx.shadowBlur = 0;
+            ctx.beginPath();
+            for(let i=-100; i<100; i+=25) {
+                ctx.moveTo(i, 60 + Math.abs(i)*0.4);
+                ctx.lineTo(i + (Math.random()-0.5)*5, 140 + Math.abs(i)*0.1);
+            }
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
         function drawScene() {
             let gx = 0, gy = 0;
             if (glitchIntensity > 1) {
@@ -1039,7 +1141,9 @@
             ctx.save();
             ctx.translate(camera.x + gx, camera.y + gy);
 
-            ctx.fillStyle = '#050000';
+            // Background Pulse
+            const pulse = 10 + Math.abs(Math.sin(Date.now() * 0.002)) * 10;
+            ctx.fillStyle = `rgb(${pulse}, ${pulse*0.2}, ${pulse*0.2})`;
             ctx.fillRect(-gx, -gy, width, height);
 
             backgroundEyes.forEach(e => {
@@ -1048,7 +1152,6 @@
                     ctx.fillStyle = `rgba(200, 0, 0, ${Math.random() * 0.5})`;
                     ctx.beginPath(); 
                     ctx.arc(e.x, e.y, e.size, 0, Math.PI*2); 
-                    // Pupil
                     const px = e.pupilX || 0;
                     const py = e.pupilY || 0;
                     ctx.arc(e.x+15+px, e.y+2+py, e.size, 0, Math.PI*2); 
@@ -1092,7 +1195,7 @@
             ctx.restore();
             
             if (player.freeze > 0) {
-                 ctx.fillStyle = `rgba(255, 0, 0, ${Math.random()*0.2})`;
+                 ctx.fillStyle = `rgba(255, 0, 0, ${Math.random()*0.3})`;
                  ctx.fillRect(0,0,width,height);
             }
         }
@@ -1101,7 +1204,11 @@
             gameState = 'GAMEOVER';
             SoundFX.enableDeathEffect();
             musicElement.playbackRate = 1.0;
+            
             SoundFX.playShatter();
+            setTimeout(() => SoundFX.playLaugh(), 800); // Delayed laugh
+            
+            showMonster = true; // Trigger monster
             curtains.classList.remove('curtain-open');
 
             for(let i=0; i<15; i++) shards.push({
@@ -1120,7 +1227,8 @@
         }
 
         function runGameOver() {
-            ctx.fillStyle = 'rgba(0,0,0,0.05)';
+            // Darken screen
+            ctx.fillStyle = 'rgba(0,0,0,0.1)';
             ctx.fillRect(0,0,width,height);
             
             shards.forEach(s => {
@@ -1130,6 +1238,10 @@
                 ctx.beginPath(); ctx.moveTo(-6,-6); ctx.lineTo(6,-2); ctx.lineTo(0,10); ctx.fill();
                 ctx.restore();
             });
+
+            if (showMonster) {
+                drawMonster();
+            }
         }
 
         function loop() {
